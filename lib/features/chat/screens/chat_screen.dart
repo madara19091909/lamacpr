@@ -19,7 +19,7 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   late final String _id = Svc.chats.chatId(widget.me.uid, widget.other.uid);
   late final Future<void> _ready = Svc.chats
-      .ensureChat(_id, widget.me.uid, widget.other.uid)
+      .ensureChat(_id, widget.me, widget.other)
       .then((_) => Svc.chats.markRead(_id, widget.me.uid));
   late final Stream<List<Message>> _messages = Svc.chats.watchMessages(_id);
 
