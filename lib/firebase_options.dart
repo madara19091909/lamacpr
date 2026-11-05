@@ -1,17 +1,15 @@
-import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
+import 'package:firebase_core/firebase_core.dart';
 
-/// ضع قيم مشروعك هنا (Firebase Console > Project settings > Your apps > Android).
-/// أو شغّل `flutterfire configure` وهو راح يستبدل هذا الملف تلقائياً.
 class DefaultFirebaseOptions {
-  DefaultFirebaseOptions._();
+  static FirebaseOptions get currentPlatform {
+    return android;
+  }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'PASTE_API_KEY', // current_key
-    appId: 'PASTE_APP_ID', // mobilesdk_app_id
-    messagingSenderId: 'PASTE_SENDER_ID', // project_number
-    projectId: 'PASTE_PROJECT_ID', // project_id
-    storageBucket: 'PASTE_STORAGE_BUCKET', // storage_bucket
+    apiKey: 'AIzaSyBzUbFda4UbmgPN-V3nmMsREfHgtJFDOFI',
+    appId: '1:367651984174:android:e68ba5a74b937120dc60bf',
+    messagingSenderId: '367651984174',
+    projectId: 'lamma-9a231',
+    storageBucket: 'lamma-9a231.firebasestorage.app',
   );
-
-  static FirebaseOptions get currentPlatform => android;
 }
