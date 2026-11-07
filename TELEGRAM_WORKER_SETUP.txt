@@ -1,0 +1,13 @@
+LAMMA Telegram image integration
+
+Worker URL: https://weathered-dream-e8de.eren1909eren.workers.dev
+
+Required Cloudflare settings:
+- TELEGRAM_BOT_TOKEN (Secret)
+- TELEGRAM_CHANNEL_ID (Text or Secret)
+- FIREBASE_API_KEY (Text)
+
+The bot must be an administrator in the channel with permission to post.
+The Firebase API key belongs to project lamma-9a231.
+User avatar and banner uploads now use Telegram Worker. Admin-screen image uploads still use Firebase Storage.
+The Worker /image endpoint returns publicly accessible profile/banner images to anyone who has the URL.

@@ -1,0 +1,303 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    // المشرف = وجود وثيقة admins/{uid}، وتضاف يدوياً من Firebase Console فقط.
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function notBanned() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('banned', false) == false;
+    }
+
+    function acceptedBetween(a, b) {
+      return (exists(/databases/$(database)/documents/friend_requests/$(a + '_' + b))
+          && get(/databases/$(database)/documents/friend_requests/$(a + '_' + b)).data.status == 'accepted')
+        || (exists(/databases/$(database)/documents/friend_requests/$(b + '_' + a))
+          && get(/databases/$(database)/documents/friend_requests/$(b + '_' + a)).data.status == 'accepted');
+    }
+
+    function otherOf(participants) {
+      return participants[0] == request.auth.uid ? participants[1] : participants[0];
+    }
+
+    function validSelfProfile() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return (!changed.hasAny(['displayName'])
+          || (request.resource.data.displayName is string
+            && request.resource.data.displayName.size() >= 2
+            && request.resource.data.displayName.size() <= 40))
+        && (!changed.hasAny(['username'])
+          || (request.resource.data.username is string
+            && request.resource.data.username.size() >= 3
+            && request.resource.data.username.size() <= 24))
+        && (!changed.hasAny(['bio'])
+          || (request.resource.data.bio is string
+            && request.resource.data.bio.size() <= 120))
+        && (!changed.hasAny(['displayNameLower'])
+          || request.resource.data.displayNameLower is string)
+        && (!changed.hasAny(['usernameLower'])
+          || request.resource.data.usernameLower is string)
+        && (!changed.hasAny(['bannerUrl'])
+          || request.resource.data.bannerUrl == null
+          || request.resource.data.bannerUrl is string);
+    }
+
+    match /admins/{uid} {
+      allow read: if isSelf(uid);
+      allow write: if false;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create: if isSelf(userId)
+        && request.resource.data.uid == userId
+        && request.resource.data.get('banned', false) == false
+        && request.resource.data.get('badges', []) is list
+        && request.resource.data.badges.size() == 0
+        && request.resource.data.get('verified', false) == false
+        && request.resource.data.get('verificationStyle', 'classic') == 'classic'
+        && request.resource.data.get('verificationImageUrl', null) == null
+        && request.resource.data.get('title', '') == ''
+        && request.resource.data.get('displayName', '') is string
+        && request.resource.data.displayName.size() >= 2
+        && request.resource.data.displayName.size() <= 40
+        && request.resource.data.get('username', '') is string
+        && request.resource.data.username.size() >= 3
+        && request.resource.data.username.size() <= 24
+        && request.resource.data.keys().hasOnly([
+          'uid', 'displayName', 'displayNameLower', 'username', 'usernameLower',
+          'photoUrl', 'bannerUrl', 'bio', 'banned', 'createdAt', 'lastSeen',
+          'badges', 'verified', 'verificationStyle', 'verificationImageUrl', 'title'
+        ]);
+
+      // العضو يعدّل بياناته الأساسية والصور واسم المستخدم فقط.
+      allow update: if (isSelf(userId)
+          && validSelfProfile()
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly([
+              'displayName', 'displayNameLower', 'username', 'usernameLower',
+              'bio', 'photoUrl', 'bannerUrl', 'lastSeen'
+            ]))
+        || (isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['banned', 'badges', 'verified', 'verificationStyle', 'verificationImageUrl', 'title']));
+      allow delete: if false;
+
+      match /friends/{friendId} {
+        allow read: if isSelf(userId);
+        allow create: if signedIn()
+          && (request.auth.uid == userId || request.auth.uid == friendId)
+          && acceptedBetween(userId, friendId);
+        allow update: if false;
+        allow delete: if signedIn()
+          && (request.auth.uid == userId || request.auth.uid == friendId);
+      }
+    }
+
+    // إيموجيات التطبيق: كل الأعضاء يقرؤون المفعّل، والإدارة وحدها تضيف وتعدّل وتحذف.
+    match /app_emojis/{emojiId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.get('enabled', false) == true);
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['emoji', 'label', 'enabled', 'createdAt'])
+        && request.resource.data.emoji is string
+        && request.resource.data.emoji.size() > 0
+        && request.resource.data.emoji.size() <= 64
+        && request.resource.data.label is string
+        && request.resource.data.label.size() <= 120
+        && request.resource.data.enabled == true;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['emoji', 'label', 'enabled']);
+      allow delete: if isAdmin();
+    }
+
+    // رقم الطلب دائماً senderId_receiverId
+    match /friend_requests/{requestId} {
+      allow read: if signedIn()
+        && (resource.data.senderId == request.auth.uid
+          || resource.data.receiverId == request.auth.uid);
+      allow create: if notBanned()
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.receiverId is string
+        && request.resource.data.receiverId != request.auth.uid
+        && request.resource.data.status == 'pending'
+        && requestId == request.auth.uid + '_' + request.resource.data.receiverId;
+      allow update: if signedIn()
+        && resource.data.receiverId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status == 'accepted';
+      allow delete: if signedIn()
+        && (resource.data.senderId == request.auth.uid
+          || resource.data.receiverId == request.auth.uid);
+    }
+
+    // المحادثات خاصة بأعضائها. حتى حساب المشرف لا يقرأ رسائل غيره.
+    match /chats/{chatId} {
+      function isMember() {
+        return signedIn() && request.auth.uid in resource.data.participants;
+      }
+
+      function isGroupAdmin() {
+        return isMember()
+          && resource.data.get('type', 'direct') == 'group'
+          && request.auth.uid in resource.data.get('admins', []);
+      }
+
+      function ownMapUpdate(fieldName) {
+        let oldMap = resource.data.get(fieldName, {});
+        let newMap = request.resource.data.get(fieldName, {});
+        return newMap is map
+          && newMap.diff(oldMap).affectedKeys().hasOnly([request.auth.uid]);
+      }
+
+      function validChatUpdate() {
+        let changed = request.resource.data.diff(resource.data).affectedKeys();
+        return request.resource.data.participants == resource.data.participants
+          && changed.hasOnly([
+            'lastMessage', 'lastMessageAt', 'lastSenderId', 'lastSenderName',
+            'reads', 'participantNames', 'hiddenMessages'
+          ])
+          && (!changed.hasAny(['reads']) || ownMapUpdate('reads'))
+          && (!changed.hasAny(['hiddenMessages']) || ownMapUpdate('hiddenMessages'))
+          && (!changed.hasAny(['lastMessage'])
+            || (request.resource.data.lastSenderId == request.auth.uid
+              && request.resource.data.lastMessage is string
+              && request.resource.data.lastMessage.size() <= 2000
+              && request.resource.data.lastMessageAt == request.time));
+      }
+
+      allow read: if notBanned() && request.auth.uid in resource.data.participants;
+
+      allow create: if notBanned() && (
+        // محادثة مباشرة مع صديق مقبول.
+        (request.resource.data.get('type', 'direct') == 'direct'
+          && request.resource.data.participants.size() == 2
+          && request.auth.uid in request.resource.data.participants
+          && chatId == request.resource.data.participants[0] + '_' + request.resource.data.participants[1]
+          && exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(otherOf(request.resource.data.participants)))
+        )
+        ||
+        // مجموعة ينشئها العضو ويصبح مشرفها الأول.
+        (request.resource.data.get('type', '') == 'group'
+          && request.resource.data.participants.size() >= 3
+          && request.resource.data.participants.size() <= 50
+          && request.auth.uid in request.resource.data.participants
+          && request.resource.data.get('createdBy', '') == request.auth.uid
+          && request.auth.uid in request.resource.data.get('admins', [])
+          && request.resource.data.get('title', '') is string
+          && request.resource.data.title.size() >= 2
+          && request.resource.data.title.size() <= 40
+        )
+      );
+
+      allow update: if notBanned() && isMember() && (
+        validChatUpdate()
+        || (isGroupAdmin()
+          && request.resource.data.participants == resource.data.participants
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title'])
+          && request.resource.data.title is string
+          && request.resource.data.title.size() >= 2
+          && request.resource.data.title.size() <= 40)
+      );
+
+      allow delete: if false;
+
+      match /typing/{typingUid} {
+        function parentChat() {
+          return get(/databases/$(database)/documents/chats/$(chatId)).data;
+        }
+        function chatMember() {
+          return signedIn() && request.auth.uid in parentChat().participants;
+        }
+        allow read: if notBanned() && chatMember();
+        allow create, update: if notBanned()
+          && chatMember()
+          && typingUid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['isTyping', 'updatedAt'])
+          && request.resource.data.isTyping is bool
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if notBanned() && chatMember() && typingUid == request.auth.uid;
+      }
+
+      match /messages/{messageId} {
+        function chatDoc() {
+          return get(/databases/$(database)/documents/chats/$(chatId)).data;
+        }
+        function chatMember() {
+          return signedIn() && request.auth.uid in chatDoc().participants;
+        }
+        function canPost() {
+          let c = chatDoc();
+          return request.auth.uid in c.participants
+            && (c.get('type', 'direct') == 'group'
+              || exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(c.participants[0] == request.auth.uid ? c.participants[1] : c.participants[0])));
+        }
+        function validReactionUpdate() {
+          let oldReactions = resource.data.get('reactions', {});
+          let newReactions = request.resource.data.get('reactions', {});
+          return resource.data.get('deleted', false) == false
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+            && newReactions is map
+            && newReactions.diff(oldReactions).affectedKeys().hasOnly([request.auth.uid])
+            && (!newReactions.keys().hasAny([request.auth.uid])
+              || (newReactions[request.auth.uid] is string
+                && newReactions[request.auth.uid].size() > 0
+                && newReactions[request.auth.uid].size() <= 8));
+        }
+        function validMessageEdit() {
+          return resource.data.senderId == request.auth.uid
+            && resource.data.get('deleted', false) == false
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt'])
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() <= 2000
+            && request.resource.data.editedAt == request.time;
+        }
+        function validMessageDelete() {
+          return resource.data.senderId == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'deletedAt'])
+            && request.resource.data.deleted == true
+            && request.resource.data.deletedAt == request.time;
+        }
+
+        allow read: if notBanned() && chatMember();
+        allow create: if notBanned()
+          && canPost()
+          && request.resource.data.keys().hasOnly([
+            'senderId', 'senderName', 'senderPhoto', 'text', 'createdAt', 'replyTo'
+          ])
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
+          && request.resource.data.get('senderName', '') is string
+          && request.resource.data.get('senderName', '').size() <= 60
+          && request.resource.data.createdAt == request.time
+          && (!request.resource.data.keys().hasAny(['replyTo'])
+            || (request.resource.data.replyTo is map
+              && request.resource.data.replyTo.keys().hasOnly(['id', 'text', 'sender'])
+              && request.resource.data.replyTo.get('id', '') is string
+              && request.resource.data.replyTo.get('text', '') is string
+              && request.resource.data.replyTo.get('sender', '') is string));
+        allow update: if notBanned() && chatMember() && (
+          validReactionUpdate()
+          || validMessageEdit()
+          || validMessageDelete()
+        );
+        allow delete: if false;
+      }
+    }
+  }
+}
