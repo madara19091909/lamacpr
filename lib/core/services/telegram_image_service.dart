@@ -138,6 +138,6 @@ class TelegramImageService {
         field: imageUrl,
       });
     }
-    return imageUrl;
+    return imageUrl!;
   }
 }
