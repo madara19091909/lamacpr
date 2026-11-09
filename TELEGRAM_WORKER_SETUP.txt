@@ -1,0 +1,38 @@
+LAMMA image and custom media integration
+
+Existing Worker URL:
+https://weathered-dream-e8de.eren1909eren.workers.dev
+
+Storage architecture:
+Flutter app -> Cloudflare Worker -> Telegram Bot -> Telegram Channel.
+No Firebase Storage bucket is used for image uploads.
+
+Worker bindings (keep the current values in Cloudflare):
+- TELEGRAM_BOT_TOKEN (Secret)
+- TELEGRAM_CHANNEL_ID (Text or Secret)
+- FIREBASE_API_KEY (Text)
+- FIREBASE_PROJECT_ID (optional Text; defaults to lamma-9a231)
+
+The bot must be an administrator in the channel and have permission to post messages.
+The Worker validates Firebase ID tokens. For badge, verification and custom emoji uploads,
+it also checks for admins/{uid} in Firestore. A Firebase API key by itself is not treated
+as an administrator credential.
+
+Supported upload kinds on POST /upload:
+- avatar
+- banner
+- badge
+- verification
+- emoji
+
+The Flutter app sends a multipart form with fields `kind` and `image`, and an
+Authorization header `Bearer <Firebase ID token>`. The Worker checks the file signature and stores the file in the
+Telegram channel using sendDocument and returns JSON containing `ok: true` and `imageUrl`.
+The returned URL uses GET /image?file_id=... and is suitable for Image.network.
+
+IMPORTANT DEPLOYMENT NOTE:
+The deployed Worker source is not part of the Flutter ZIP. The companion source is
+cloudflare-worker/worker.js. Back up the currently deployed Worker code first, then
+replace its code with that file in Cloudflare Workers & Pages and deploy. Keep the
+existing bindings/secrets; do not paste the bot token or API key into the source file.
+After deployment, test a profile picture first, then a badge and a custom emoji.
