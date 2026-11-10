@@ -20,7 +20,8 @@ Future<String?> showChatMessageMenu(
     context: context,
     useSafeArea: true,
     backgroundColor: AppColors.surfaceHigh,
-    builder: (sheetContext) => Padding(
+    isScrollControlled: true,
+    builder: (sheetContext) => SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 22),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -271,7 +272,8 @@ class _MessageRichText extends StatelessWidget {
       try {
         url = Uri.decodeComponent(encoded);
         parsedUrl = Uri.tryParse(url);
-      } on FormatException {
+      } catch (_) {
+        // رمز مشوّه (percent-encoding غير صالح) — نعرضه كنص بدل ما ينهار التطبيق.
         url = null;
       }
       if (url == null || parsedUrl == null ||
