@@ -26,6 +26,20 @@ jobs:
             flutter create --platforms=android --org com.lamma --project-name social .
           fi
 
+      # flutter create يولّد اختبار يشير لتطبيق افتراضي (MyApp) غير موجود بمشروعك
+      - name: Remove generated default test
+        run: rm -f test/widget_test.dart
+
+      # صلاحية الإنترنت: قالب flutter create يضيفها لنسخ debug/profile فقط،
+      # وبدونها نسخة release ما تتصل بـ Firebase ولا بـ Cloudflare.
+      - name: Ensure INTERNET permission
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ -f "$MANIFEST" ] && ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            sed -i '0,/<manifest[^>]*>/s//&\n    <uses-permission android:name="android.permission.INTERNET" \/>/' "$MANIFEST"
+          fi
+          grep -n 'INTERNET' "$MANIFEST" || true
+
       # مكتبات Firebase تحتاج minSdk 23 على الأقل
       - name: Set minSdk to 23
         run: |
