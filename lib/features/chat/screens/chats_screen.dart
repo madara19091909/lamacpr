@@ -19,10 +19,11 @@ class ChatsScreen extends StatefulWidget {
 }
 
 class _ChatsScreenState extends State<ChatsScreen> {
-  late final AppUser _me = context.read<AppUser>();
-  late final Stream<List<ChatSummary>> _chats = Svc.chats.watchChats(_me.uid);
-  late final Stream<Set<String>> _friendIds = Svc.friends.watchFriendIds(_me.uid);
-  late final Stream<Set<String>> _sentIds = Svc.friends.watchSentIds(_me.uid);
+  AppUser get _me => context.read<AppUser>();
+  late final String _uid = context.read<AppUser>().uid;
+  late final Stream<List<ChatSummary>> _chats = Svc.chats.watchChats(_uid);
+  late final Stream<Set<String>> _friendIds = Svc.friends.watchFriendIds(_uid);
+  late final Stream<Set<String>> _sentIds = Svc.friends.watchSentIds(_uid);
 
   final _search = TextEditingController();
   Timer? _debounce;
@@ -240,7 +241,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
       ),
     );
     final groupTitle = title.text.trim();
-    title.dispose();
+    // نؤخر dispose حتى تنتهي أنيميشن إغلاق النافذة.
+    Future<void>.delayed(const Duration(milliseconds: 500), title.dispose);
     if (newChatId != null && mounted) {
       _openGroup(ChatSummary(
         id: newChatId,
@@ -273,6 +275,8 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // نراقب العضو حتى يتحدث الاسم/الصورة أعلى الصفحة فوراً.
+    context.watch<AppUser>();
     return Column(
       children: [
         Padding(
