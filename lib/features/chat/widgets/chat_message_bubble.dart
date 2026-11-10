@@ -1,3 +1,4 @@
+import '../../../core/widgets/sticker_text_controller.dart';
 import 'package:flutter/material.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -174,7 +175,7 @@ class ChatMessageBubble extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        message.replyToText ?? '',
+                        stickerPreview(message.replyToText ?? ''),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: Colors.white.withValues(alpha: .75), fontSize: 11),
