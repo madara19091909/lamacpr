@@ -29,7 +29,7 @@ class ProfileScreen extends StatelessWidget {
             IconButton.filledTonal(
               tooltip: 'إعدادات الحساب',
               onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
-                builder: (_) => const ProfileSettingsScreen(),
+                builder: (_) => ProfileSettingsScreen(me: me),
               )),
               style: IconButton.styleFrom(backgroundColor: AppColors.surfaceHigh, foregroundColor: AppColors.lilac),
               icon: const Icon(Icons.settings_rounded),
@@ -47,7 +47,7 @@ class ProfileScreen extends StatelessWidget {
                 title: 'تعديل الملف',
                 subtitle: 'الاسم والنبذة والصور',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-                  builder: (_) => const ProfileSettingsScreen(openEditor: true),
+                  builder: (_) => ProfileSettingsScreen(me: me, openEditor: true),
                 )),
               ),
             ),
@@ -58,7 +58,7 @@ class ProfileScreen extends StatelessWidget {
                 title: 'الإعدادات',
                 subtitle: 'الخصوصية والحساب',
                 onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-                  builder: (_) => const ProfileSettingsScreen(),
+                  builder: (_) => ProfileSettingsScreen(me: me),
                 )),
               ),
             ),
@@ -380,15 +380,19 @@ class _ProfileDetailRow extends StatelessWidget {
 
 /// الإعدادات منفصلة عن البروفايل، وتضم تغيير الصور والبيانات ولوحة المشرف.
 class ProfileSettingsScreen extends StatefulWidget {
-  const ProfileSettingsScreen({super.key, this.openEditor = false});
+  const ProfileSettingsScreen({super.key, required this.me, this.openEditor = false});
+  final AppUser me;
   final bool openEditor;
   @override
   State<ProfileSettingsScreen> createState() => _ProfileSettingsScreenState();
 }
 
 class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
-  late final String _uid = context.read<AppUser>().uid;
-  late final Stream<bool> _isAdmin = Svc.users.isAdmin(_uid);
+  // الشاشات المفتوحة بـ Navigator ما تشوف Provider<AppUser> (لأنه داخل شاشة home)،
+  // لذلك نمرّر العضو مباشرة ونتابع تحديثاته من Firestore.
+  String get _uid => widget.me.uid;
+  late final Stream<bool> _isAdmin = Svc.users.isAdmin(widget.me.uid);
+  late final Stream<AppUser?> _meStream = Svc.users.watch(widget.me.uid);
   bool _uploadingAvatar = false;
   bool _uploadingBanner = false;
   bool _openedEditor = false;
@@ -399,7 +403,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     if (widget.openEditor && !_openedEditor) {
       _openedEditor = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _editProfile(context.read<AppUser>());
+        if (mounted) _editProfile(widget.me);
       });
     }
   }
@@ -435,7 +439,14 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final me = context.watch<AppUser>();
+    return StreamBuilder<AppUser?>(
+      stream: _meStream,
+      initialData: widget.me,
+      builder: (context, snapshot) => _buildBody(context, snapshot.data ?? widget.me),
+    );
+  }
+
+  Widget _buildBody(BuildContext context, AppUser me) {
     return Scaffold(
       appBar: AppBar(title: const Text('إعدادات الحساب')),
       body: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 28), children: [
@@ -530,7 +541,13 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
     setState(() => _saving = true);
     try {
       await Svc.users.updateProfile(widget.me.uid, name: _name.text, username: _username.text, bio: _bio.text);
-      if (mounted) { Navigator.pop(context); toast(context, 'تم تحديث بيانات الملف الشخصي.'); }
+      if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.pop(context);
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('تم تحديث بيانات الملف الشخصي.')));
+      }
     } catch (error) {
       if (mounted) { setState(() => _saving = false); toast(context, error is ArgumentError ? error.message.toString() : 'تعذّر حفظ البيانات: $error'); }
     }
