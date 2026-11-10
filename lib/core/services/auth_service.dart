@@ -23,7 +23,11 @@ class AuthService {
         email: email.trim(),
         password: password,
       );
-      await cred.user?.updateDisplayName(name.trim());
+      try {
+        await cred.user?.updateDisplayName(name.trim());
+      } catch (_) {
+        // الحساب انفتح فعلاً؛ الاسم محفوظ أصلاً عبر pendingName بملف Firestore.
+      }
     } finally {
       // ensureProfile يشتغل مباشرة بعد الإنشاء؛ نمسح الاسم بعد فترة قصيرة.
       Future<void>.delayed(const Duration(seconds: 5), () => pendingName = null);
