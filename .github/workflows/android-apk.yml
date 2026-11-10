@@ -60,6 +60,11 @@ jobs:
       - name: Get packages
         run: flutter pub get
 
+      # توليد أيقونة التطبيق من assets/icon/app_icon.png وكتابتها داخل android/
+      # (بدون هذه الخطوة يبقى التطبيق بأيقونة فلاتر الافتراضية)
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
+
       - name: Build APK
         run: flutter build apk --release
 
