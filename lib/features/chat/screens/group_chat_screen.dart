@@ -9,6 +9,7 @@ import '../../../core/services/services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../../core/widgets/emoji_picker.dart';
+import '../../../core/widgets/sticker_text_controller.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../../profile/screens/profile_screen.dart';
 
@@ -33,11 +34,10 @@ class GroupChatScreen extends StatefulWidget {
 class _GroupChatScreenState extends State<GroupChatScreen> {
   late final Future<void> _ready = Svc.chats.markRead(widget.chatId, widget.me.uid);
   late final Stream<List<Message>> _messages = Svc.chats.watchMessages(widget.chatId);
-  late final Stream<List<AppEmoji>> _emojis = Svc.emojis.watchActive();
   late final Stream<ChatSummary?> _chat = Svc.chats.watchChat(widget.chatId, widget.me.uid);
   late final Stream<int> _typing = Svc.chats.watchTypingCount(widget.chatId, widget.me.uid);
 
-  final _input = TextEditingController();
+  final _input = StickerTextController();
   Timer? _typingTimer;
   bool _typingActive = false;
   bool _sending = false;
@@ -78,7 +78,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   Future<void> _send() async {
-    final text = _input.text.trim();
+    final text = _input.wireText.trim();
     if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
     try {
@@ -105,20 +105,10 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
-  void _insertEmoji(String emoji) {
-    final oldText = _input.text;
-    final selection = _input.selection;
-    final start = selection.start < 0 ? oldText.length : selection.start;
-    final end = selection.end < 0 ? oldText.length : selection.end;
-    final next = oldText.replaceRange(start, end, emoji);
-    _input.value = TextEditingValue(
-      text: next,
-      selection: TextSelection.collapsed(offset: start + emoji.length),
-    );
-  }
+  void _insertEmoji(String emoji) => _input.insertWire(emoji);
 
   Future<void> _showEmojiPicker() async {
-    final selected = await showLammaEmojiPicker(context, _emojis);
+    final selected = await showLammaEmojiPicker(context, Svc.emojis.watchActive());
     if (selected != null && mounted) _insertEmoji(selected);
   }
 
@@ -148,8 +138,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         setState(() {
           _editing = message;
           _replyingTo = null;
-          _input.text = message.text;
-          _input.selection = TextSelection.collapsed(offset: _input.text.length);
+          _input.setWireText(message.text);
         });
         break;
       case 'delete':
@@ -351,12 +340,16 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   }
 
   Future<void> _showGroupInfo() async {
+    // مهم: نفتح stream جديد لهذي النافذة. الـ stream المشترك (_chat) سبق واشترك بيه
+    // الشريط العلوي وجسم الشاشة، وStreams مال Firestore broadcast ما تعيد آخر قيمة
+    // للمشترك المتأخر، فكانت النافذة تبقى تحميل للأبد وما تنفتح معلومات الكروب.
+    final infoStream = Svc.chats.watchChat(widget.chatId, widget.me.uid);
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (sheetContext) => StreamBuilder<ChatSummary?>(
-        stream: _chat,
+        stream: infoStream,
         builder: (context, snapshot) {
           final chat = snapshot.data;
           if (snapshot.hasError) return const SizedBox(height: 220, child: EmptyState(icon: Icons.cloud_off_rounded, title: 'تعذّر تحميل بيانات المجموعة'));
@@ -689,7 +682,7 @@ class _GroupComposer extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    contextMessage!.text,
+                                    stickerPreview(contextMessage!.text),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontSize: 11, color: AppColors.textDim),
