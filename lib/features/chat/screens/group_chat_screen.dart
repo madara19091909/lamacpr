@@ -198,6 +198,12 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
+  /// نؤخر dispose حتى تنتهي أنيميشن إغلاق النافذة، وإلا يظهر خطأ
+  /// "TextEditingController was used after being disposed".
+  void _disposeLater(TextEditingController controller) {
+    Future<void>.delayed(const Duration(milliseconds: 500), controller.dispose);
+  }
+
   Future<void> _renameGroup(ChatSummary chat) async {
     final controller = TextEditingController(text: chat.title);
     final title = await showDialog<String>(
@@ -212,7 +218,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         ],
       ),
     );
-    controller.dispose();
+    _disposeLater(controller);
     if (title == null || title.trim().isEmpty) return;
     try {
       await Svc.chats.renameGroup(widget.chatId, title);
@@ -236,7 +242,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         ],
       ),
     );
-    controller.dispose();
+    _disposeLater(controller);
     if (description == null) return;
     try {
       await Svc.chats.updateGroupDescription(widget.chatId, description);
@@ -274,7 +280,11 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                   return CheckboxListTile(
                     value: selected.contains(user.uid),
                     onChanged: (value) => refresh(() {
-                      if (value == true) selected.add(user.uid); else selected.remove(user.uid);
+                      if (value == true) {
+                        selected.add(user.uid);
+                      } else {
+                        selected.remove(user.uid);
+                      }
                     }),
                     secondary: UserAvatar(name: user.name, photoUrl: user.photoUrl, size: 42),
                     title: Text(user.name),
