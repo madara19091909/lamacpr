@@ -9,6 +9,7 @@ import '../../../core/services/services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../../core/widgets/emoji_picker.dart';
+import '../../../core/widgets/sticker_text_controller.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../../profile/screens/profile_screen.dart';
 
@@ -27,11 +28,10 @@ class _ChatScreenState extends State<ChatScreen> {
       .ensureChat(_id, widget.me, widget.other)
       .then((_) => Svc.chats.markRead(_id, widget.me.uid));
   late final Stream<List<Message>> _messages = Svc.chats.watchMessages(_id);
-  late final Stream<List<AppEmoji>> _emojis = Svc.emojis.watchActive();
   late final Stream<ChatSummary?> _chat = Svc.chats.watchChat(_id, widget.me.uid);
   late final Stream<bool> _typing = Svc.chats.watchTyping(_id, widget.other.uid);
 
-  final _input = TextEditingController();
+  final _input = StickerTextController();
   Timer? _typingTimer;
   bool _typingActive = false;
   bool _sending = false;
@@ -74,7 +74,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _send() async {
-    final text = _input.text.trim();
+    final text = _input.wireText.trim();
     if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
     try {
@@ -115,20 +115,10 @@ class _ChatScreenState extends State<ChatScreen> {
     return fallback;
   }
 
-  void _insertEmoji(String emoji) {
-    final oldText = _input.text;
-    final selection = _input.selection;
-    final start = selection.start < 0 ? oldText.length : selection.start;
-    final end = selection.end < 0 ? oldText.length : selection.end;
-    final next = oldText.replaceRange(start, end, emoji);
-    _input.value = TextEditingValue(
-      text: next,
-      selection: TextSelection.collapsed(offset: start + emoji.length),
-    );
-  }
+  void _insertEmoji(String emoji) => _input.insertWire(emoji);
 
   Future<void> _showEmojiPicker() async {
-    final selected = await showLammaEmojiPicker(context, _emojis);
+    final selected = await showLammaEmojiPicker(context, Svc.emojis.watchActive());
     if (selected != null && mounted) _insertEmoji(selected);
   }
 
@@ -163,8 +153,7 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _editing = message;
           _replyingTo = null;
-          _input.text = message.text;
-          _input.selection = TextSelection.collapsed(offset: _input.text.length);
+          _input.setWireText(message.text);
         });
         break;
       case 'delete':
@@ -462,7 +451,7 @@ class _Composer extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    contextMessage!.text,
+                                    stickerPreview(contextMessage!.text),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontSize: 11, color: AppColors.textDim),
