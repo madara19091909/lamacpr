@@ -48,12 +48,23 @@ class FriendService {
   Future<void> accept(FriendRequest r) async {
     // الخطوة 1: نقبل الطلب (القواعد تتحقق منه قبل ما تسمح بإنشاء الصداقة).
     await _db.collection('friend_requests').doc(r.id).update({'status': 'accepted'});
-    // الخطوة 2: نكتب الصداقة من الطرفين.
-    final batch = _db.batch();
-    final data = {'since': FieldValue.serverTimestamp()};
-    batch.set(_friends(r.receiverId).doc(r.senderId), data);
-    batch.set(_friends(r.senderId).doc(r.receiverId), data);
-    await batch.commit();
+    // الخطوة 2: نكتب الصداقة من الطرفين. إذا فشلت (انقطاع نت لحظي) نعيد المحاولة،
+    // لأن الطلب صار 'accepted' ولن يظهر مرة ثانية بقائمة الطلبات المعلّقة.
+    Object? lastError;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final batch = _db.batch();
+        final data = {'since': FieldValue.serverTimestamp()};
+        batch.set(_friends(r.receiverId).doc(r.senderId), data);
+        batch.set(_friends(r.senderId).doc(r.receiverId), data);
+        await batch.commit();
+        return;
+      } catch (e) {
+        lastError = e;
+        await Future<void>.delayed(Duration(milliseconds: 400 * (attempt + 1)));
+      }
+    }
+    throw lastError ?? StateError('تعذّر إكمال الصداقة.');
   }
 
   Future<void> remove(String myUid, String friendUid) async {
