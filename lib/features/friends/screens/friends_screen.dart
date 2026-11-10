@@ -46,6 +46,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
     });
   }
 
+  Future<void> _guard(Future<void> Function() action, String failMessage) async {
+    try {
+      await action();
+    } catch (_) {
+      if (mounted) toast(context, failMessage);
+    }
+  }
+
   void _openChat(AppUser me, AppUser other) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => ChatScreen(me: me, other: other)),
@@ -103,11 +111,11 @@ class _FriendsScreenState extends State<FriendsScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
-                                  onPressed: () => Svc.friends.reject(r),
+                                  onPressed: () => _guard(() => Svc.friends.reject(r), 'ما كدرنا نرفض الطلب.'),
                                   icon: const Icon(Icons.close_rounded, color: AppColors.textDim),
                                 ),
                                 FilledButton(
-                                  onPressed: () => Svc.friends.accept(r),
+                                  onPressed: () => _guard(() => Svc.friends.accept(r), 'ما كدرنا نقبل الطلب. جرّب مرة ثانية.'),
                                   style: FilledButton.styleFrom(
                                     minimumSize: const Size(72, 40),
                                     padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -218,7 +226,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     final req = incoming.where((r) => r.senderId == u.uid).toList();
     if (req.isNotEmpty) {
       return FilledButton(
-        onPressed: () => Svc.friends.accept(req.first),
+        onPressed: () => _guard(() => Svc.friends.accept(req.first), 'ما كدرنا نقبل الطلب. جرّب مرة ثانية.'),
         style: FilledButton.styleFrom(minimumSize: const Size(72, 40)),
         child: const Text('قبول'),
       );
@@ -272,7 +280,12 @@ class _FriendRow extends StatelessWidget {
                 ok: 'إزالة',
                 danger: true,
               );
-              if (ok) await Svc.friends.remove(me.uid, u.uid);
+              if (!ok) return;
+              try {
+                await Svc.friends.remove(me.uid, u.uid);
+              } catch (_) {
+                if (context.mounted) toast(context, 'ما كدرنا نزيل الصديق. جرّب مرة ثانية.');
+              }
             },
             itemBuilder: (_) => const [
               PopupMenuItem(
